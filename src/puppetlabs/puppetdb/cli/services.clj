@@ -350,6 +350,8 @@
                                         database-metrics-registry)
         discard-dir (io/file (conf/mq-discard-dir config))]
 
+    (def my-db write-db)
+
     (when-let [v (version/version)]
       (log/infof "PuppetDB version %s" v))
 

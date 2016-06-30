@@ -22,6 +22,7 @@
             [puppetlabs.puppetdb.facts :as facts]
             [puppetlabs.puppetdb.reports :as reports]
             [puppetlabs.puppetdb.facts :as facts :refer [facts-schema]]
+            [puppetlabs.puppetdb.cheshire :as json]
             [puppetlabs.kitchensink.core :as kitchensink]
             [puppetlabs.puppetdb.scf.storage-utils :as sutils]
             [puppetlabs.puppetdb.jdbc :as jdbc]
@@ -495,7 +496,9 @@
      :resource_params
      (for [[resource-hash params] new-params
            [k v] params]
-       {:resource (sutils/munge-hash-for-storage resource-hash) :name (name k) :value (sutils/db-serialize v)}))))
+       {:resource (sutils/munge-hash-for-storage resource-hash)
+        :name (name k)
+        :value (sutils/db-serialize v)}))))
 
 (def resource-ref?
   "Returns true of the map is a resource reference"
@@ -1072,7 +1075,8 @@
             (->> valuemaps
                  (filter (comp missing-vhashes :value_hash))
                  distinct
-                 (realize-records! :fact_values #(update % :value_hash sutils/munge-hash-for-storage))
+                 (realize-records! :fact_values
+                                   #(update % :value_hash sutils/munge-hash-for-storage))
                  (map #(vector (:value_hash %) (:id %))))))
     {}))
 

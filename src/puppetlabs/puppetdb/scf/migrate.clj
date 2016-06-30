@@ -59,6 +59,14 @@
             [puppetlabs.puppetdb.jdbc :as jdbc :refer [query-to-vec]]
             [puppetlabs.puppetdb.config :as conf]))
 
+;; taken from storage.clj; preserved here in case of change
+(defn insert-records*
+  "Nil/empty safe insert-records, see java.jdbc's insert-records for more "
+  [table
+   record-coll]
+  (when (seq record-coll)
+    (apply jdbc/insert! table record-coll)))
+
 (defn init-through-2-3-8
   []
 
@@ -1062,6 +1070,42 @@
     "ALTER TABLE reports ADD COLUMN noop_pending boolean"
     "CREATE INDEX idx_reports_noop_pending on reports using btree (noop_pending) where (noop_pending = true)"))
 
+(defn fact-values-value-to-jsonb
+  []
+  (let [values (jdbc/query-to-vec
+                 (format "select id, value_type_id, value_integer, %s as value_hash,
+                          value_float, value_string, value_boolean,
+                          value from fact_values"
+                         (sutils/sql-hash-as-str "value_hash")))]
+    (jdbc/do-commands
+      "alter table facts drop constraint fact_value_id_fk"
+
+      "drop table fact_values"
+
+      (sql/create-table-ddl
+        :fact_values
+        ["id" "bigint NOT NULL PRIMARY KEY DEFAULT nextval('fact_values_id_seq')"]
+        ["value_hash" "bytea NOT NULL UNIQUE"]
+        ["value_type_id" "bigint NOT NULL"]
+        ["value_integer" "bigint"]
+        ["value_float" "double precision"]
+        ["value_string" "text"]
+        ["value_boolean" "boolean"]
+        ["value" "jsonb"]))
+
+    (->> values
+         (map #(update % :value (comp sutils/munge-jsonb-for-storage json/parse-string)))
+         (map #(update % :value_hash sutils/munge-hash-for-storage))
+         (insert-records* :fact_values))
+
+    (jdbc/do-commands
+      "alter table facts add constraint fact_value_id_fk foreign key
+       (fact_value_id) references fact_values(id) on update restrict on delete restrict"
+
+      "create index fact_values_value_float_idx on fact_values(value_float)"
+      "create index fact_values_value_hash_idx on fact_values(value_hash)"
+      "create index fact_values_value_integer_idx on fact_values(value_integer)")))
+
 (def migrations
   "The available migrations, as a map from migration version to migration function."
   {28 init-through-2-3-8
@@ -1087,7 +1131,10 @@
    45 index-certnames-latest-report-id
    46 drop-certnames-latest-id-index
    47 add-producer-to-reports-catalogs-and-factsets
-   48 add-noop-pending-to-reports})
+   48 add-noop-pending-to-reports
+   49 fact-values-value-to-jsonb
+
+   })
 
 (def desired-schema-version (apply max (keys migrations)))
 

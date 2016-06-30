@@ -625,3 +625,24 @@
                 (str "select encode(md5_agg(val), 'hex') "
                      "from (values (1, 'a'::bytea), (1, 'b'::bytea)) x(gid, val) "
                      "group by gid"))))))))
+
+(deftest test-fact-values-value->jsonb
+  (clear-db-for-testing!)
+  (fast-forward-to-migration! 48)
+  (let [before-migration (schema-info-map *db*)]
+    (apply-migration-for-testing! 49)
+    (is (= {:index-diff nil
+            :table-diff [{:left-only {:data_type "text",
+                                      :character_octet_length 1073741824},
+                          :right-only {:data_type "jsonb",
+                                       :character_octet_length nil},
+                          :same {:table_name "fact_values",
+                                 :column_name "value",
+                                 :numeric_precision_radix nil,
+                                 :numeric_precision nil,
+                                 :character_maximum_length nil,
+                                 :nullable? "YES",
+                                 :datetime_precision nil,
+                                 :column_default nil,
+                                 :numeric_scale nil}}]}
+           (diff-schema-maps before-migration (schema-info-map *db*))))))
