@@ -1251,6 +1251,7 @@
   "Expands/normalizes the user provided query to a minimal subset of the
   query language"
   [node]
+  (print "NODE IS" node)
   (cm/match [node]
 
             [[(op :guard #{"=" "<" ">" "<=" ">="}) "value" (value :guard #(number? %))]]
@@ -1620,7 +1621,7 @@
   [query-rec node]
   (cm/match [node]
             [["=" column-name value]]
-            (let [colname (first (str/split column-name #"."))
+            (let [colname (first (str/split column-name #"\."))
                   cinfo (get-in query-rec [:projections colname])]
               (case (:type cinfo)
                :timestamp
@@ -1638,9 +1639,10 @@
                                        :value (facts/factpath-to-string value)})
 
                :queryable-json
+               (do (println "HELLOW")
                (map->JsonContainsExpression {:field column-name
                                              :column-data cinfo
-                                             :value value})
+                                             :value value}))
 
                (map->BinaryExpression {:operator :=
                                        :column cinfo
