@@ -207,6 +207,13 @@
   (hcore/raw
    (format "%s = ANY(?)" (first (hfmt/format column)))))
 
+(defn sql-json-contains
+  [field value]
+  (let [[column & path] (str/split field #".")
+        comparison-structure (reduce #(assoc %2 %1) (reverse (conj path value)))]
+    (hcore/raw
+      (format "%s @> ?" column) comparison-structure)))
+
 (defn db-serialize
   "Serialize `value` into a form appropriate for querying against a
   serialized database column."

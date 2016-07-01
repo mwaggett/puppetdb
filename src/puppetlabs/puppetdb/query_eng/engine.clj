@@ -68,6 +68,11 @@
     [column :- column-schema
      value])
 
+(s/defrecord JsonContainsExpression
+  [field
+   column-data
+   value])
+
 (s/defrecord InExpression
     [column :- [column-schema]
      ;; May not want this if it's recursive and not just "instance?"
@@ -130,8 +135,8 @@
                              "environment" {:type :string
                                             :queryable? true
                                             :field :environments.environment}
-                             "facts" {:type :json
-                                      :queryable? false
+                             "facts" {:type :queryable-json
+                                      :queryable? true
                                       :field {:select [[(h/json-object-agg :name :value) :facts]]
                                               :from [[{:select [:fp.name  :fv.value]
                                                        :from [[:facts :f]]
@@ -147,8 +152,8 @@
                                                                [:= :fp.depth 0]
                                                                [:= :f.factset_id :fs.id]]}
                                                       :foo]]}}
-                             "trusted" {:type :json
-                                        :queryable? false
+                             "trusted" {:type :queryable-json
+                                        :queryable? true
                                         :field  {:select [[:fv.value :trusted]]
                                                  :from [[:facts :f]]
                                                  :join [[:fact_values :fv]
@@ -175,7 +180,10 @@
                                        [:= :fs.certname :certnames.certname]]
                            }
 
-               })
+               
+              :alias "inventory"
+              :subquery? false}
+              )
   )
 
 (def nodes-query
@@ -1112,6 +1120,10 @@
     [:in (mapv :field column)
      (-plan->sql subquery)])
 
+  JsonContainsExpression
+  (-plan->sql [{:keys [field value]}]
+    (su/sql-json-contains field value))
+
   BinaryExpression
   (-plan->sql [{:keys [column operator value]}]
     (apply vector
@@ -1178,6 +1190,7 @@
   (or (instance? BinaryExpression node)
       (instance? RegexExpression node)
       (instance? InArrayExpression node)
+      (instance? JsonContainsExpression node)
       (instance? ArrayBinaryExpression node)
       (instance? ArrayRegexExpression node)))
 
@@ -1607,7 +1620,8 @@
   [query-rec node]
   (cm/match [node]
             [["=" column-name value]]
-            (let [cinfo (get-in query-rec [:projections column-name])]
+            (let [colname (first (str/split column-name #"."))
+                  cinfo (get-in query-rec [:projections colname])]
               (case (:type cinfo)
                :timestamp
                (map->BinaryExpression {:operator :=
@@ -1622,6 +1636,11 @@
                (map->BinaryExpression {:operator :=
                                        :column cinfo
                                        :value (facts/factpath-to-string value)})
+
+               :queryable-json
+               (map->JsonContainsExpression {:field column-name
+                                             :column-data cinfo
+                                             :value value})
 
                (map->BinaryExpression {:operator :=
                                        :column cinfo
@@ -1845,8 +1864,10 @@
   (cm/match [node]
             [[(:or "=" "~" ">" "<" "<=" ">=") field _]]
             (let [{:keys [alias] :as query-context} (:query-context (meta node))
-                  qfields (queryable-fields query-context)]
-              (when-not (or (vec? field) (contains? (set qfields) field))
+                  qfields (queryable-fields query-context)
+                  valid-patterns (map re-pattern qfields)]
+              (when-not (or (vec? field)
+                            (some #(re-find % field) valid-patterns))
                 {:node node
                  :state (conj state
                               (format "'%s' is not a queryable object for %s, %s" field alias
