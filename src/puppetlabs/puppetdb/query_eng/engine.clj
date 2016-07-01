@@ -121,36 +121,21 @@
                              "timestamp" {:type :timestamp
                                           :queryable? true
                                           :field :fs.timestamp}
-                             "hash" {:type :hash
+                             "hash" {:type :string
                                      :queryable? true
-                                     :field :fs.hash}
+                                     :field (hsql-hash-as-str :fs.hash)}
                              "producer_timestamp" {:type :timestamp
                                                    :queryable? true
                                                    :field :fs.producer_timestamp}
                              "environment" {:type :string
                                             :queryable? true
-                                            :field :fs.environment}
+                                            :field :environments.environment}
                              "facts" {:type :json
                                       :queryable? false
                                       :field {:select [[(h/json-object-agg :name :value) :facts]]
                                               :from [[{:select [:fp.name  :fv.value]
                                                        :from [[:facts :f]]
-                                                       :inner-join [[:fact_values :fv]
-                                                                    [:= :fv.id :f.fact_value_id]
-
-                                                                    [:fact_paths :fp]
-                                                                    [:= :fp.id :f.fact_path_id]
-
-                                                                    [:value_types :vt]
-                                                                    [:= :vt.id :fv.value_type_id]]
-                                                       :where [:and
-                                                               [:= :fp.depth 0]
-                                                               [:= :f.factset_id :factsets.id]]}]]}}
-                             "trusted" {:type :json
-                                        :queryable? false
-                                        :field  {:select [[:fv.value :trusted]]
-                                                 :from [[:facts :f]]
-                                                 :inner-join [[:fact_values :fv]
+                                                       :join [[:fact_values :fv]
                                                               [:= :fv.id :f.fact_value_id]
 
                                                               [:fact_paths :fp]
@@ -158,10 +143,26 @@
 
                                                               [:value_types :vt]
                                                               [:= :vt.id :fv.value_type_id]]
+                                                       :where [:and
+                                                               [:= :fp.depth 0]
+                                                               [:= :f.factset_id :fs.id]]}
+                                                      :foo]]}}
+                             "trusted" {:type :json
+                                        :queryable? false
+                                        :field  {:select [[:fv.value :trusted]]
+                                                 :from [[:facts :f]]
+                                                 :join [[:fact_values :fv]
+                                                        [:= :fv.id :f.fact_value_id]
+
+                                                        [:fact_paths :fp]
+                                                        [:= :fp.id :f.fact_path_id]
+
+                                                        [:value_types :vt]
+                                                        [:= :vt.id :fv.value_type_id]]
                                                  :where [:and
                                                          [:= :fp.depth 0]
-                                                         [:= :f.factset_id :factsets.id]
-                                                         [:= :fp.name :trusted]]}}}
+                                                         [:= :f.factset_id :fs.id]
+                                                         [:= :fp.name (hcore/raw "'trusted'")]]}}}
 
                :selection {:from [[:factsets :fs]]
                            :left-join [:environments
@@ -171,7 +172,7 @@
                                        [:= :fs.producer_id :producers.id]
 
                                        :certnames
-                                       [:= :fs.certname_id :certnames.id]]
+                                       [:= :fs.certname :certnames.certname]]
                            }
 
                })
