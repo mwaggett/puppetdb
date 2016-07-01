@@ -113,6 +113,70 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Queryable Entities
 
+(def inventory-query
+  "Query for inventory"
+  (map->Query {:projections {"certname" {:type :string
+                                         :queryable? true
+                                         :field :certnames.certname}
+                             "timestamp" {:type :timestamp
+                                          :queryable? true
+                                          :field :fs.timestamp}
+                             "hash" {:type :hash
+                                     :queryable? true
+                                     :field :fs.hash}
+                             "producer_timestamp" {:type :timestamp
+                                                   :queryable? true
+                                                   :field :fs.producer_timestamp}
+                             "environment" {:type :string
+                                            :queryable? true
+                                            :field :fs.environment}
+                             "facts" {:type :json
+                                      :queryable? false
+                                      :field {:select [[(h/json-object-agg :name :value) :facts]]
+                                              :from [[{:select [:fp.name  :fv.value]
+                                                       :from [[:facts :f]]
+                                                       :inner-join [[:fact_values :fv]
+                                                                    [:= :fv.id :f.fact_value_id]
+
+                                                                    [:fact_paths :fp]
+                                                                    [:= :fp.id :f.fact_path_id]
+
+                                                                    [:value_types :vt]
+                                                                    [:= :vt.id :fv.value_type_id]]
+                                                       :where [:and
+                                                               [:= :fp.depth 0]
+                                                               [:= :f.factset_id :factsets.id]]}]]}}
+                             "trusted" {:type :json
+                                        :queryable? false
+                                        :field  {:select [[:fv.value :trusted]]
+                                                 :from [[:facts :f]]
+                                                 :inner-join [[:fact_values :fv]
+                                                              [:= :fv.id :f.fact_value_id]
+
+                                                              [:fact_paths :fp]
+                                                              [:= :fp.id :f.fact_path_id]
+
+                                                              [:value_types :vt]
+                                                              [:= :vt.id :fv.value_type_id]]
+                                                 :where [:and
+                                                         [:= :fp.depth 0]
+                                                         [:= :f.factset_id :factsets.id]
+                                                         [:= :fp.name :trusted]]}}}
+
+               :selection {:from [[:factsets :fs]]
+                           :left-join [:environments
+                                       [:= :fs.environment_id :environments.id]
+
+                                       :producers
+                                       [:= :fs.producer_id :producers.id]
+
+                                       :certnames
+                                       [:= :fs.certname_id :certnames.id]]
+                           }
+
+               })
+  )
+
 (def nodes-query
   "Query for nodes entities, mostly used currently for subqueries"
   (map->Query {:projections {"certname" {:type :string
@@ -179,6 +243,7 @@
                                        [:= :catalogs.id :latest_catalogs.catalog_id]
 
                                        [:factsets :fs]
+
                                        [:= :certnames.certname :fs.certname]
 
                                        :reports
@@ -1006,6 +1071,7 @@
 (pls/defn-validated sql-from-query :- String
   "Convert a query to honeysql, then to sql"
   [query]
+  (def myquery query)
   (-> query
       honeysql-from-query
       hcore/format
