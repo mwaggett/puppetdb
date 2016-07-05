@@ -212,7 +212,7 @@
   (let [[column & path] (str/split field #"\.")
         comparison-structure (reduce #(assoc {} %2 %1) (reverse (conj path value)))]
     (hcore/raw
-      "factset_id in (select factset_id from
+      "fs.id in (select factset_id from
        facts inner join fact_values
        on facts.fact_value_id=fact_values.id
        inner join fact_paths on facts.fact_path_id = fact_paths.id

@@ -1203,6 +1203,12 @@
     {:node (assoc node :value "?")
      :state (conj state (:value node))}
 
+    (instance? JsonContainsExpression node)
+    (do (println "NODE IS" node)
+        (Thread/sleep 3000)
+        {:node (assoc node :value "?")
+         :state (conj state (:value node))})
+
     (instance? FnExpression node)
     {:state (apply conj (:params node) state)}))
 
