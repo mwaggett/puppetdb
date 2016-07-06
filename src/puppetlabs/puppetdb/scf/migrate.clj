@@ -1070,34 +1070,53 @@
     "ALTER TABLE reports ADD COLUMN noop_pending boolean"
     "CREATE INDEX idx_reports_noop_pending on reports using btree (noop_pending) where (noop_pending = true)"))
     
-(defn resource-params-value-to-jsonb
+(defn resource-params-value-and-resource-params-cache-parameters-to-jsonb
   []
-  (let [values (jdbc/query-to-vec
+  (let [resource-params-values (jdbc/query-to-vec
                  (format "SELECT %s as resource, name, value FROM resource_params"
+                          (sutils/sql-hash-as-str "resource")))
+        resource-params-cache-values (jdbc/query-to-vec
+                 (format "SELECT %s as resource, parameters FROM resource_params_cache"
                           (sutils/sql-hash-as-str "resource")))]
     (jdbc/do-commands
+      "ALTER TABLE catalog_resources DROP CONSTRAINT catalog_resources_resource_fkey"
       "DROP TABLE resource_params"
+      "DROP TABLE resource_params_cache"
       
       (sql/create-table-ddl
         :resource_params
         ["resource" "bytea NOT NULL"]
         ["name" "text NOT NULL"]
-        ["value" "jsonb NOT NULL"]))
+        ["value" "jsonb NOT NULL"])
+      (sql/create-table-ddl
+        :resource_params_cache
+        ["resource" "bytea NOT NULL"]
+        ["parameters" "jsonb"]))
         
-    (->> values
+    (->> resource-params-values
          (map #(update % :value (comp sutils/munge-jsonb-for-storage json/parse-string)))
          (map #(update % :resource sutils/munge-hash-for-storage))
          (insert-records* :resource_params))
+         
+    (->> resource-params-cache-values
+         (map #(update % :parameters (comp sutils/munge-jsonb-for-storage json/parse-string)))
+         (map #(update % :resource sutils/munge-hash-for-storage))
+         (insert-records* :resource_params_cache))
 
     (jdbc/do-commands
+      "ALTER TABLE resource_params ADD CONSTRAINT resource_params_pkey
+         PRIMARY KEY (resource, name)"
+      "ALTER TABLE resource_params_cache ADD CONSTRAINT resource_params_cache_pkey
+         PRIMARY KEY (resource)"
       "ALTER TABLE resource_params 
         ADD CONSTRAINT resource_params_resource_fkey FOREIGN KEY (resource) 
         REFERENCES resource_params_cache(resource) ON DELETE CASCADE"
-      "ALTER TABLE resource_params ADD CONSTRAINT resource_params_pkey
-         PRIMARY KEY (resource, name)"
+      "ALTER TABLE catalog_resources ADD CONSTRAINT catalog_resources_resource_fkey
+         FOREIGN KEY (resource) REFERENCES resource_params_cache(resource) ON DELETE CASCADE"
       "CREATE INDEX idx_resources_params_name ON resource_params(name)"
       "CREATE INDEX idx_resources_params_resource ON resource_params(resource)"
-      "CREATE INDEX resource_params_hash_expr_idx ON resource_params(encode(resource, 'hex'))")))
+      "CREATE INDEX resource_params_hash_expr_idx ON resource_params(encode(resource, 'hex'))"
+      "CREATE INDEX rpc_hash_expr_idx ON resource_params_cache(encode(resource, 'hex'))")))
 
 (def migrations
   "The available migrations, as a map from migration version to migration function."
@@ -1125,7 +1144,7 @@
    46 drop-certnames-latest-id-index
    47 add-producer-to-reports-catalogs-and-factsets
    48 add-noop-pending-to-reports
-   49 resource-params-value-to-jsonb})
+   49 resource-params-value-and-resource-params-cache-parameters-to-jsonb})
 
 (def desired-schema-version (apply max (keys migrations)))
 
