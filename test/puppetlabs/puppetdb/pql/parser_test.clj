@@ -112,7 +112,10 @@
     ["resources"]
 
     "fact_contents"
-    ["fact_contents"])
+    ["fact_contents"]
+    
+    "inventory"
+    ["inventory"])
 
   (are [in] (insta/failure? (insta/parse parse in :start :entity))
     "foobar"
@@ -490,12 +493,17 @@
       "certname"
       "value"
       "field_underscore"
+      "facts.operatingsystem.κόσμε"
+      "trusted.authenticated"
+      "parameters.😁"
       "latest_report?")
 
     (are [in] (insta/failure? (insta/parse parse in :start :field))
       "'asdf'"
       "field-hyphen"
       "foo?bar"
+      "foo.bar"
+      "facts."
       "?"
       ""))
 

@@ -646,3 +646,77 @@
                                  :column_default nil,
                                  :numeric_scale nil}}]}
            (diff-schema-maps before-migration (schema-info-map *db*))))))
+
+(deftest test-resource-params-value-and-resource-params-cache-parameters-to-jsonb
+  (clear-db-for-testing!)
+  (fast-forward-to-migration! 49)
+  (let [before-migration (schema-info-map *db*)]
+    (jdbc/insert! :resource_params_cache
+                  {:resource (sutils/munge-hash-for-storage "a0a0a0")
+                   :parameters (json/generate-string {:a "apple" :b {:1 "bear" :2 "button" :3 "butts"}})})
+    (jdbc/insert! :resource_params_cache
+                  {:resource (sutils/munge-hash-for-storage "b1b1b1")
+                   :parameters (json/generate-string {:c "camel" :d {:1 "dinosaur" :2 "donkey" :3 "daffodil"}})})
+    (jdbc/insert! :resource_params
+                  {:resource (sutils/munge-hash-for-storage "a0a0a0")
+                   :name "a"
+                   :value (json/generate-string "apple")})
+    (jdbc/insert! :resource_params
+                  {:resource (sutils/munge-hash-for-storage "b1b1b1")
+                   :name "d"
+                   :value (json/generate-string {:1 "dinosaur" :2 "donkey" :3 "daffodil"})})
+    (apply-migration-for-testing! 50)
+    (testing "should migrate resource_params data correctly"
+      (let [responses
+            (query-to-vec 
+              (format "SELECT %s as resource, name, value FROM resource_params"
+                      (sutils/sql-hash-as-str "resource")))
+            parsed-responses (for [response responses] (assoc response :value (sutils/parse-db-json (response :value))))]
+      (is (= parsed-responses
+             [{:resource "a0a0a0" :name "a" :value "apple"} 
+              {:resource "b1b1b1" :name "d" :value {:1 "dinosaur" :2 "donkey" :3 "daffodil"}}]))))
+    (testing "should migrate resource_params_cache data correctly"
+      (let [responses
+            (query-to-vec 
+              (format "SELECT %s as resource, parameters FROM resource_params_cache"
+                      (sutils/sql-hash-as-str "resource")))
+            parsed-responses (for [response responses] (assoc response :parameters (sutils/parse-db-json (response :parameters))))]
+      (is (= parsed-responses
+             [{:resource "a0a0a0" :parameters {:a "apple" :b {:1 "bear" :2 "button" :3 "butts"}}} 
+              {:resource "b1b1b1" :parameters {:c "camel" :d {:1 "dinosaur" :2 "donkey" :3 "daffodil"}}}]))))
+    (testing "should change only value column type"
+      (let [schema-diff (diff-schema-maps before-migration (schema-info-map *db*))]
+        (is (= (set [])
+               (->> (:index-diff schema-diff)
+                    (map #(kitchensink/mapvals (fn [idx] (dissoc idx :user)) %))
+                    set)))
+        (is (= (set [{:left-only
+                      {:data_type "text", :character_octet_length 1073741824},
+                      :right-only
+                      {:data_type "jsonb", :character_octet_length nil},
+                      :same
+                      {:table_name "resource_params",
+                       :column_name "value",
+                       :numeric_precision_radix nil,
+                       :numeric_precision nil,
+                       :character_maximum_length nil,
+                       :nullable? "NO",
+                       :datetime_precision nil,
+                       :column_default nil,
+                       :numeric_scale nil}}
+                     {:left-only
+                      {:data_type "text", :character_octet_length 1073741824},
+                      :right-only
+                      {:data_type "jsonb", :character_octet_length nil},
+                      :same
+                      {:table_name "resource_params_cache",
+                       :column_name "parameters",
+                       :numeric_precision_radix nil,
+                       :numeric_precision nil,
+                       :character_maximum_length nil,
+                       :nullable? "YES",
+                       :datetime_precision nil,
+                       :column_default nil,
+                       :numeric_scale nil}}])
+               (set (:table-diff schema-diff))))))))
+
