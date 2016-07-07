@@ -24,10 +24,10 @@
          :parameters nil})
        (jdbc/insert!
         :resource_params
-        {:resource (sutils/munge-hash-for-storage "01") :name "ensure" :value (db-serialize "file")}
-        {:resource (sutils/munge-hash-for-storage "01") :name "owner"  :value (db-serialize "root")}
-        {:resource (sutils/munge-hash-for-storage "01") :name "group"  :value (db-serialize "root")}
-        {:resource (sutils/munge-hash-for-storage "01") :name "acl"    :value (db-serialize ["john:rwx" "fred:rwx"])})
+        {:resource (sutils/munge-hash-for-storage "01") :name "ensure" :value (sutils/munge-jsonb-for-storage "file")}
+        {:resource (sutils/munge-hash-for-storage "01") :name "owner"  :value (sutils/munge-jsonb-for-storage "root")}
+        {:resource (sutils/munge-hash-for-storage "01") :name "group"  :value (sutils/munge-jsonb-for-storage "root")}
+        {:resource (sutils/munge-hash-for-storage "01") :name "acl"    :value (sutils/munge-jsonb-for-storage ["john:rwx" "fred:rwx"])})
        (jdbc/insert!
         :certnames
         {:id 1 :certname "one.local"}

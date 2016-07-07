@@ -495,7 +495,7 @@
      :resource_params
      (for [[resource-hash params] new-params
            [k v] params]
-       {:resource (sutils/munge-hash-for-storage resource-hash) :name (name k) :value (sutils/db-serialize v)}))))
+       {:resource (sutils/munge-hash-for-storage resource-hash) :name (name k) :value (sutils/munge-jsonb-for-storage v)}))))
 
 (def resource-ref?
   "Returns true of the map is a resource reference"
