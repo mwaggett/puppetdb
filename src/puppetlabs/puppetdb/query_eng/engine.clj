@@ -1122,7 +1122,7 @@
 
   JsonContainsExpression
   (-plan->sql [{:keys [field value]}]
-    (su/sql-json-contains field value))
+    (su/fact-json-contains field value))
 
   BinaryExpression
   (-plan->sql [{:keys [column operator value]}]
@@ -1190,9 +1190,12 @@
   (or (instance? BinaryExpression node)
       (instance? RegexExpression node)
       (instance? InArrayExpression node)
-      (instance? JsonContainsExpression node)
       (instance? ArrayBinaryExpression node)
       (instance? ArrayRegexExpression node)))
+
+
+(let [[column object-name & path] (str/split field #"\.")]
+  (reduce #(assoc {} %2 %1) (reverse (conj path value)))) 
 
 (defn extract-params
   "Extracts the node's expression value, puts it in state
@@ -1204,10 +1207,11 @@
      :state (conj state (:value node))}
 
     (instance? JsonContainsExpression node)
-    (do (println "NODE IS" node)
-        (Thread/sleep 3000)
-        {:node (assoc node :value "?")
-         :state (conj state (:value node))})
+    (let [{:keys [field value]} node
+          [column object-name & path] (str/split field #"\.")
+          comparison-structure (reduce #(assoc {} %2 %1) (reverse (conj path value)))]
+      {:node (assoc node :value "?" :field column)
+       :state (conj state object-name (su/munge-jsonb-for-storage comparison-structure))})
 
     (instance? FnExpression node)
     {:state (apply conj (:params node) state)}))
@@ -1645,10 +1649,9 @@
                                        :value (facts/factpath-to-string value)})
 
                :queryable-json
-               (do (println "HELLOW")
                (map->JsonContainsExpression {:field column-name
                                              :column-data cinfo
-                                             :value value}))
+                                             :value value})
 
                (map->BinaryExpression {:operator :=
                                        :column cinfo
