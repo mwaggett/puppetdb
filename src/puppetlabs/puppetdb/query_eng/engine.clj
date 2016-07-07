@@ -801,9 +801,9 @@
                              "line" {:type :integer
                                      :queryable? true
                                      :field :line}
-                             "parameters" {:type :json
+                             "parameters" {:type :queryable-json
                                            :queryable? true
-                                           :field (h/scast :rpc.parameters :json)}}
+                                           :field :rpc.parameters}}
 
                :selection {:from [[:catalog_resources :resources]]
                            :join [:latest_catalogs
@@ -1121,8 +1121,11 @@
      (-plan->sql subquery)])
 
   JsonContainsExpression
-  (-plan->sql [{:keys [field value]}]
-    (su/fact-json-contains field value))
+  (-plan->sql [{:keys [field value column-data]}]
+    (case field
+      "facts" (su/fact-json-contains field value)
+      "trusted" (su/fact-json-contains field value)
+      "parameters" (su/json-contains field value)))
 
   BinaryExpression
   (-plan->sql [{:keys [column operator value]}]
@@ -1193,9 +1196,18 @@
       (instance? ArrayBinaryExpression node)
       (instance? ArrayRegexExpression node)))
 
-
-(let [[column object-name & path] (str/split field #"\.")]
-  (reduce #(assoc {} %2 %1) (reverse (conj path value)))) 
+(defn parse-dot-query
+  [{:keys [field value] :as node} state]
+  (let [my-fn (fn [path value] (reduce #(assoc {} %1 %2) (reverse (conj path value))))
+        [column & path] (str/split field #"\.")]
+    (case column
+      "facts" (let [[fact-name & fact-path] path]
+                {:node (assoc node :value "?" :field column)
+                 :state (conj state fact-name
+                              (su/munge-jsonb-for-storage (my-fn fact-path value)))})
+      "parameters" {:node (assoc node :value "?" :field column)
+                    :state (conj state (su/munge-jsonb-for-storage
+                                         (my-fn path value)))})))
 
 (defn extract-params
   "Extracts the node's expression value, puts it in state
@@ -1207,11 +1219,7 @@
      :state (conj state (:value node))}
 
     (instance? JsonContainsExpression node)
-    (let [{:keys [field value]} node
-          [column object-name & path] (str/split field #"\.")
-          comparison-structure (reduce #(assoc {} %2 %1) (reverse (conj path value)))]
-      {:node (assoc node :value "?" :field column)
-       :state (conj state object-name (su/munge-jsonb-for-storage comparison-structure))})
+    (parse-dot-query node state)
 
     (instance? FnExpression node)
     {:state (apply conj (:params node) state)}))

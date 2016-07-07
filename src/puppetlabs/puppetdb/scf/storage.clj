@@ -489,7 +489,8 @@
     (insert-records*
      :resource_params_cache
      (map (fn [[resource-hash params]]
-            {:resource (sutils/munge-hash-for-storage resource-hash) :parameters (when params (sutils/db-serialize params))})
+            {:resource (sutils/munge-hash-for-storage resource-hash)
+             :parameters (when params (sutils/munge-jsonb-for-storage params))})
           new-params))
 
     (insert-records*
